@@ -1,18 +1,14 @@
 # Weed Detection App
 
-A desktop application for running YOLOv8 weed detection on large GeoTIFF images. The app reads the raster in manageable windows, runs sliced inference, combines overlapping detections, displays the results over the image, and exports both a visualization and COCO-style detection data.
+A desktop app for running YOLOv8 weed detection on large GeoTIFF images. The app reads the raster in manageable windows, runs sliced inference, combines overlapping detections, displays the results over the image, and exports both a visualization and COCO-style detection data.
 
 ## Features
 
 - Desktop interface built with PySide6
 - Memory-bounded processing of large GeoTIFF files
 - YOLOv8 inference through the bundled SAHI runtime
-- Automatic CPU or NVIDIA GPU selection
 - Configurable confidence, slice size, and slice overlap
-- Zoomable and pannable image preview with detection overlays
 - Weed count, confidence bands, image coverage, and estimated geographic area
-- PNG visualization and JSON detection export
-- Background processing with progress reporting and cancellation
 
 ## Installation
 
