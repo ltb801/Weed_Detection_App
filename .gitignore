@@ -1,0 +1,27 @@
+# Python-generated files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments and local tooling
+.venv/
+venv/
+env/
+.idea/
+.vscode/
+
+# Model checkpoints
+*.pt
+
+# GeoTIFF imagery
+*.tif
+*.tiff
+
+# Runtime logs and generated results
+logs/
+results/
+data/output/
+
+# OS metadata
+Thumbs.db
+.DS_Store

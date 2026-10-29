@@ -1,0 +1,22 @@
+# GUI and image loading
+PySide6>=6.5,<7.0
+qt-material>=2.17,<3.0
+Pillow>=8.2.0
+
+# Bundled SAHI 0.11.18 runtime dependencies
+numpy>=1.24,<2.0
+opencv-python>=4.5.4.60,<=4.9.0.80
+PyYAML>=5.4.1
+requests>=2.23.0
+shapely>=2.0.0,<3.0
+tqdm>=4.48.2
+
+# YOLOv8 inference
+torch>=1.13,<3.0
+torchvision>=0.14,<1.0
+ultralytics>=8.0.0,<8.3.0
+dill>=0.3.8,<1.0  # Required by the bundled YOLO checkpoint
+
+# GeoTIFF and boundary tools
+rasterio>=1.3,<2.0
+matplotlib>=3.7,<4.0
