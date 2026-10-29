@@ -99,4 +99,5 @@ Confirm that the file is a valid GeoTIFF with at least three raster bands. The a
 
 Use a supported 64-bit Python version, upgrade `pip`, and create a fresh virtual environment. On uncommon platforms, consult the package's installation documentation for a compatible binary build.
 
-## If you find this repository useful, please give it a star! ⭐
+
+### If you find this repository useful, please give it a star! ⭐
