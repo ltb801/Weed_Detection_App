@@ -87,15 +87,15 @@ The summary always reports detection count and image coverage. Estimated weed ar
 
 Select **Automatic** or **CPU**, or reinstall PyTorch using a CUDA-enabled build compatible with the device.
 
-### The model does not load
+### 'The model does not load'
 
 Confirm that the file is a YOLOv8-compatible `.pt` checkpoint and that its required Ultralytics version is supported by `requirements.txt`. Check `logs/weed_detection.log` for the complete error.
 
-### The image does not load
+### 'The image does not load'
 
 Confirm that the file is a valid GeoTIFF with at least three raster bands. The app supports `.tif` and `.tiff` file extensions.
 
-### Installation fails for PyTorch, Rasterio, or another compiled package
+### 'Installation fails for PyTorch, Rasterio, or another compiled package'
 
 Use a supported 64-bit Python version, upgrade `pip`, and create a fresh virtual environment. On uncommon platforms, consult the package's installation documentation for a compatible binary build.
 
