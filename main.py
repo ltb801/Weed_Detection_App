@@ -319,15 +319,28 @@ class WeedDetectionApp(QMainWindow, UI_MainWindow):
         self._finish_operation(f'Detection complete - {count:,} objects found')
 
     def _on_detection_clicked(self, prediction, position):
-        x1, y1, x2, y2 = prediction.bbox.to_xyxy()
-        area = prediction.to_coco_prediction().json.get('area')
-        if area is None:
-            area = (x2 - x1) * (y2 - y1)
+        from src.summary import describe_patch
+
+        result = self.sliced_pred_result
+        details = describe_patch(prediction, result.transform, result.crs)
+        name = prediction.category.name.replace('_', ' ').replace('-', ' ').strip().capitalize()
+        if details.latitude is None or details.longitude is None:
+            location = 'GPS location: unavailable (no usable map coordinates)'
+        else:
+            location = (
+                'GPS location (WGS84)\n'
+                f'Latitude: {details.latitude:.6f}°\n'
+                f'Longitude: {details.longitude:.6f}°'
+            )
+        if details.area_m2 is None:
+            area = 'Estimated ground area: unavailable'
+        elif details.area_m2 >= 10_000:
+            area = f'Estimated ground area: {details.area_m2 / 10_000:,.2f} ha'
+        else:
+            area = f'Estimated ground area: {details.area_m2:,.1f} m²'
         self.imageView.show_detection_popup(
-            f'{prediction.category.name}\n'
-            f'Confidence: {prediction.score.value:.1%}\n'
-            f'Patch area: {area:,.0f} px²\n'
-            f'Bounds: {x2 - x1:,.0f} × {y2 - y1:,.0f} px',
+            f'Weed patch: {name}',
+            f'{location}\n{area}\nDetection confidence: {prediction.score.value:.1%}',
             position,
         )
 

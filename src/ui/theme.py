@@ -40,9 +40,13 @@ QGroupBox::title {
 }
 
 QFrame#summaryOverlay {
-    background-color: rgba(234, 247, 244, 245);
+    background-color: rgba(234, 247, 244, 225);
     border: 1px solid #0F766E;
     border-radius: 8px;
+}
+
+QWidget#summaryBody {
+    background-color: transparent;
 }
 
 QLabel#summaryTitle {

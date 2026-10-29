@@ -1,6 +1,7 @@
 '''Coverage and confidence statistics for a completed detection run.'''
 
 import logging
+import math
 from dataclasses import dataclass
 
 from shapely.affinity import affine_transform
@@ -21,6 +22,13 @@ class DetectionSummary:
     lower_confidence: int
 
 
+@dataclass(frozen=True)
+class PatchDetails:
+    latitude: float | None
+    longitude: float | None
+    area_m2: float | None
+
+
 def _prediction_shape(prediction):
     polygons = []
     if prediction.mask:
@@ -38,6 +46,47 @@ def _prediction_shape(prediction):
     return box(x1, y1, x2, y2)
 
 
+def _ground_area_m2(geometry, transform, crs):
+    if crs is None or transform is None:
+        return None
+    if geometry.is_empty:
+        return 0.0
+    try:
+        # EPSG:6933 preserves area when the source CRS uses degrees.
+        world_shape = affine_transform(
+            geometry,
+            [transform.a, transform.b, transform.d,
+             transform.e, transform.c, transform.f],
+        )
+        from rasterio.warp import transform_geom
+        return shape(transform_geom(crs, 'EPSG:6933', mapping(world_shape))).area
+    except Exception:
+        logger.exception('Could not calculate geographic detection area')
+        return None
+
+
+def describe_patch(prediction, transform=None, crs=None):
+    '''Return a point within the mask in GPS coordinates and its ground area.'''
+    geometry = _prediction_shape(prediction)
+    area_m2 = _ground_area_m2(geometry, transform, crs)
+    if crs is None or transform is None or geometry.is_empty:
+        return PatchDetails(None, None, area_m2)
+    try:
+        point = geometry.centroid
+        if not geometry.covers(point):
+            point = geometry.representative_point()
+        x, y = transform @ (point.x, point.y)
+        from rasterio.warp import transform as transform_coordinates
+        longitude, latitude = transform_coordinates(crs, 'EPSG:4326', [x], [y])
+        lat, lon = latitude[0], longitude[0]
+        if not math.isfinite(lat) or not math.isfinite(lon):
+            raise ValueError('Invalid geographic coordinates')
+        return PatchDetails(lat, lon, area_m2)
+    except Exception:
+        logger.exception('Could not calculate detection location')
+        return PatchDetails(None, None, area_m2)
+
+
 def summarize_detections(predictions, width, height, transform=None, crs=None):
     '''Union mask polygons, then measure their share of the image footprint.'''
     counts = [0, 0, 0]
@@ -50,22 +99,7 @@ def summarize_detections(predictions, width, height, transform=None, crs=None):
     covered = unary_union(shapes).intersection(box(0, 0, width, height)) if shapes else Polygon()
     pixel_area = covered.area
     coverage_percent = 100 * pixel_area / (width * height) if width and height else 0
-    area_m2 = None
-    if crs is not None and transform is not None:
-        if covered.is_empty:
-            area_m2 = 0.0
-        else:
-            try:
-                # EPSG:6933 is an equal-area CRS; source pixels may be in degrees.
-                world_shape = affine_transform(
-                    covered,
-                    [transform.a, transform.b, transform.d,
-                     transform.e, transform.c, transform.f],
-                )
-                from rasterio.warp import transform_geom
-                area_m2 = shape(transform_geom(crs, 'EPSG:6933', mapping(world_shape))).area
-            except Exception:
-                logger.exception('Could not calculate geographic detection area')
+    area_m2 = _ground_area_m2(covered, transform, crs)
 
     return DetectionSummary(
         count=len(predictions),

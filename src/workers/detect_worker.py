@@ -23,6 +23,8 @@ class DetectionResult:
     image_height: int
     object_prediction_list: list
     summary: DetectionSummary | None = None
+    transform: object | None = None
+    crs: object | None = None
 
     def to_coco_annotations(self):
         return [prediction.to_coco_prediction().json for prediction in self.object_prediction_list]
@@ -76,7 +78,10 @@ def detect_geotiff(image_path, detection_model, slice_height, slice_width,
         summary = summarize_detections(
             predictions, source.width, source.height, source.transform, source.crs,
         )
-        return DetectionResult(str(image_path), source.width, source.height, predictions, summary)
+        return DetectionResult(
+            str(image_path), source.width, source.height, predictions,
+            summary, source.transform, source.crs,
+        )
 
 
 class DetectWorker(QObject):

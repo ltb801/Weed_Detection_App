@@ -68,6 +68,7 @@ class WeedDetectionSmokeTests(unittest.TestCase):
         window.close()
 
     def test_detection_overlay_can_be_inspected_and_hidden(self):
+        from rasterio.transform import from_origin
         from sahi.prediction import ObjectPrediction
         from src.summary import DetectionSummary
         from src.workers.detect_worker import DetectionResult
@@ -77,12 +78,15 @@ class WeedDetectionSmokeTests(unittest.TestCase):
         window.current_pixmap = QPixmap(100, 50)
         window.imageView.set_image(window.current_pixmap)
         prediction = ObjectPrediction(
-            bbox=[20, 20, 40, 40], category_id=0, category_name='weed',
+            bbox=[20, 20, 40, 40], category_id=0, category_name='gorse_weed',
             segmentation=[[20, 20, 40, 20, 40, 40, 20, 40]],
             score=0.8, full_shape=[100, 200],
         )
         summary = DetectionSummary(1, 400, 2, 10.0, 1, 0, 0)
-        window._on_detection_finished(DetectionResult('example.tif', 200, 100, [prediction], summary))
+        window._on_detection_finished(DetectionResult(
+            'example.tif', 200, 100, [prediction], summary,
+            from_origin(149.85, -33.36, 0.00001, 0.00001), 'EPSG:4326',
+        ))
         self.assertTrue(window.overlayToggle.isEnabled())
         self.assertEqual(len(window.imageView._detections), 1)
         self.assertIn('1 patch', window.summaryCountLabel.text())
@@ -105,8 +109,12 @@ class WeedDetectionSmokeTests(unittest.TestCase):
         point = window.imageView.mapFromScene(QPointF(15, 15))
         QTest.mouseClick(window.imageView.viewport(), Qt.LeftButton, pos=point)
         self.assertTrue(window.imageView._popup.isVisible())
+        self.assertEqual(window.imageView._popup_title.text(), 'Weed patch: Gorse weed')
+        self.assertIn('Latitude: -33.360300', window.imageView._popup_text.text())
+        self.assertIn('Longitude: 149.850300', window.imageView._popup_text.text())
+        self.assertIn('Estimated ground area:', window.imageView._popup_text.text())
         self.assertIn('80.0%', window.imageView._popup_text.text())
-        self.assertIn('px²', window.imageView._popup_text.text())
+        self.assertIn('m²', window.imageView._popup_text.text())
 
         window.overlayToggle.setChecked(False)
         self.assertFalse(window.imageView._detections[0][0].isVisible())
@@ -133,6 +141,19 @@ class WeedDetectionSmokeTests(unittest.TestCase):
         self.assertEqual((summary.high_confidence, summary.medium_confidence,
                           summary.lower_confidence), (1, 1, 0))
         self.assertGreater(summary.area_m2, 0)
+
+    def test_patch_details_without_georeferencing_are_unavailable(self):
+        from sahi.prediction import ObjectPrediction
+        from src.summary import describe_patch
+
+        prediction = ObjectPrediction(
+            bbox=[10, 10, 20, 20], category_id=0,
+            category_name='gorse_weed', score=0.9,
+        )
+        details = describe_patch(prediction)
+        self.assertIsNone(details.latitude)
+        self.assertIsNone(details.longitude)
+        self.assertIsNone(details.area_m2)
 
 
 if __name__ == '__main__':
