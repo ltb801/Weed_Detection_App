@@ -86,11 +86,14 @@ class WeedDetectionSmokeTests(unittest.TestCase):
         window._on_detection_finished(DetectionResult(
             'example.tif', 200, 100, [prediction], summary,
             from_origin(149.85, -33.36, 0.00001, 0.00001), 'EPSG:4326',
+            inference_seconds=1.2,
         ))
         self.assertTrue(window.overlayToggle.isEnabled())
         self.assertEqual(len(window.imageView._detections), 1)
         self.assertIn('1 patch', window.summaryCountLabel.text())
         self.assertIn('10.0 m', window.summaryAreaLabel.text())
+        self.assertEqual(window.inferenceTimeLabel.text(), 'Inference time: 1.20s')
+        self.assertTrue(window.inferenceTimeLabel.isVisible())
 
         self.app.processEvents()
         self.assertIs(window.summaryOverlay.parent(), window.imageView.viewport())

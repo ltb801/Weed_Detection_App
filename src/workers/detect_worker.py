@@ -25,6 +25,7 @@ class DetectionResult:
     summary: DetectionSummary | None = None
     transform: object | None = None
     crs: object | None = None
+    inference_seconds: float | None = None
 
     def to_coco_annotations(self):
         return [prediction.to_coco_prediction().json for prediction in self.object_prediction_list]
@@ -54,6 +55,7 @@ def detect_geotiff(image_path, detection_model, slice_height, slice_width,
         )
         postprocess = GreedyNMMPostprocess(match_threshold=0.5, match_metric='IOS')
         predictions = []
+        inference_seconds = 0.0
         total = len(bboxes)
         for index, (left, top, right, bottom) in enumerate(bboxes, start=1):
             progress_callback(index, total)
@@ -65,6 +67,9 @@ def detect_geotiff(image_path, detection_model, slice_height, slice_width,
                 detection_model=detection_model,
                 shift_amount=[left, top],
                 full_shape=[source.height, source.width],
+            )
+            inference_seconds += getattr(
+                detection_model, 'last_inference_seconds', 0.0
             )
             predictions.extend(
                 prediction.get_shifted_object_prediction()
@@ -80,7 +85,7 @@ def detect_geotiff(image_path, detection_model, slice_height, slice_width,
         )
         return DetectionResult(
             str(image_path), source.width, source.height, predictions,
-            summary, source.transform, source.crs,
+            summary, source.transform, source.crs, inference_seconds,
         )
 
 

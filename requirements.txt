@@ -15,8 +15,11 @@ tqdm==4.70.1
 # The weed_app environment uses the PyTorch 2.5.1 CUDA 12.1 conda build.
 torch==2.5.1
 torchvision==0.20.1
-ultralytics==8.2.103
+ultralytics==8.4.63
 dill==0.3.8  # Required by the bundled YOLO checkpoint
+ml_dtypes==0.5.4
+onnx==1.23.2
+onnxruntime-gpu==1.20.1
 
 # GeoTIFF and boundary tools
 rasterio==1.4.4

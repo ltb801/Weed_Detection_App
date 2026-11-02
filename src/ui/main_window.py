@@ -185,9 +185,12 @@ class UI_MainWindow:
         main_window.progressBar.setValue(0)
         main_window.statusLabel = QLabel('Ready')
         main_window.statusLabel.setWordWrap(True)
+        main_window.inferenceTimeLabel = QLabel('Inference time: —')
+        main_window.inferenceTimeLabel.hide()
         layout.addLayout(buttons)
         layout.addWidget(main_window.progressBar)
         layout.addWidget(main_window.statusLabel)
+        layout.addWidget(main_window.inferenceTimeLabel)
         return group
 
     def _create_export_group(self, main_window):

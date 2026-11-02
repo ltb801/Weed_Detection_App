@@ -1,7 +1,10 @@
 # OBSS SAHI Tool
 # Code written by AnNT, 2023.
 
+import ast
+import json
 import logging
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import cv2
@@ -18,8 +21,66 @@ from sahi.utils.import_utils import check_requirements
 
 
 class Yolov8DetectionModel(DetectionModel):
+    SUPPORTED_MODEL_FORMATS = {".pt", ".onnx", ".engine"}
+
     def check_dependencies(self) -> None:
         check_requirements(["ultralytics"])
+
+    @staticmethod
+    def _normalise_image_size(value):
+        if isinstance(value, int):
+            return value
+        if isinstance(value, (list, tuple)) and len(value) >= 2:
+            height, width = int(value[-2]), int(value[-1])
+            return height if height == width else [height, width]
+        return None
+
+    @staticmethod
+    def _normalise_names(value):
+        if isinstance(value, str):
+            try:
+                value = json.loads(value)
+            except json.JSONDecodeError:
+                value = ast.literal_eval(value)
+        if isinstance(value, dict):
+            return {str(index): name for index, name in value.items()}
+        return None
+
+    @classmethod
+    def _read_export_info(cls, model_path):
+        """Return task and static input size embedded in an exported model."""
+        path = Path(model_path)
+        if path.suffix.lower() == ".engine":
+            with path.open("rb") as engine_file:
+                metadata_length = int.from_bytes(
+                    engine_file.read(4), byteorder="little", signed=True
+                )
+                if metadata_length <= 0 or metadata_length > 1_000_000:
+                    raise ValueError("TensorRT engine has invalid Ultralytics metadata")
+                metadata = json.loads(engine_file.read(metadata_length).decode("utf-8"))
+            return (
+                metadata.get("task"),
+                cls._normalise_image_size(metadata.get("imgsz")),
+                cls._normalise_names(metadata.get("names")),
+            )
+
+        if path.suffix.lower() == ".onnx":
+            import onnx
+
+            graph = onnx.load(str(path), load_external_data=False)
+            metadata = {item.key: item.value for item in graph.metadata_props}
+            dimensions = graph.graph.input[0].type.tensor_type.shape.dim
+            static_shape = [dimension.dim_value for dimension in dimensions[-2:]]
+            image_size = None
+            if len(static_shape) == 2 and all(static_shape):
+                image_size = cls._normalise_image_size(static_shape)
+            return (
+                metadata.get("task"),
+                image_size,
+                cls._normalise_names(metadata.get("names")),
+            )
+
+        return None, None, None
 
     def load_model(self):
         """
@@ -29,11 +90,24 @@ class Yolov8DetectionModel(DetectionModel):
         from ultralytics import YOLO
 
         try:
-            model = YOLO(self.model_path)
-            model.to(self.device)
+            suffix = Path(self.model_path).suffix.lower()
+            if suffix not in self.SUPPORTED_MODEL_FORMATS:
+                supported = ", ".join(sorted(self.SUPPORTED_MODEL_FORMATS))
+                raise ValueError(f"supported model formats are: {supported}")
+
+            task, exported_image_size, exported_names = self._read_export_info(self.model_path)
+            model = YOLO(self.model_path, task=task)
+            if suffix == ".pt":
+                model.to(self.device)
+                if self.image_size is None:
+                    self.image_size = self._normalise_image_size(model.overrides.get("imgsz"))
+            elif exported_image_size is not None:
+                self.image_size = exported_image_size
+            if not self.category_mapping and exported_names:
+                self.category_mapping = exported_names
             self.set_model(model)
         except Exception as e:
-            raise TypeError("model_path is not a valid yolov8 model path: ", e)
+            raise TypeError(f"model_path is not a valid Ultralytics YOLO model: {e}") from e
 
     def set_model(self, model: Any):
         """
@@ -44,10 +118,38 @@ class Yolov8DetectionModel(DetectionModel):
         """
 
         self.model = model
+        self.last_inference_seconds = 0.0
         # set category_mapping
         if not self.category_mapping:
-            category_mapping = {str(ind): category_name for ind, category_name in enumerate(self.category_names)}
-            self.category_mapping = category_mapping
+            names = self.model.names
+            self.category_mapping = {
+                str(index): name for index, name in names.items()
+            }
+
+    def _prediction_kwargs(self):
+        kwargs = {
+            "verbose": False,
+            "conf": self.confidence_threshold,
+            "device": self.device,
+        }
+        if self.config_path is not None:
+            kwargs["cfg"] = self.config_path
+        if self.image_size is not None:
+            kwargs["imgsz"] = self.image_size
+        return kwargs
+
+    def warmup(self):
+        """Load and warm a TensorRT engine before timed detection begins."""
+        if Path(self.model_path).suffix.lower() != ".engine":
+            return
+        if isinstance(self.image_size, int):
+            height = width = self.image_size
+        elif isinstance(self.image_size, (list, tuple)) and len(self.image_size) >= 2:
+            height, width = self.image_size[-2:]
+        else:
+            raise ValueError("TensorRT engine input dimensions are unavailable")
+        image = np.zeros((int(height), int(width), 3), dtype=np.uint8)
+        self.model(image, **self._prediction_kwargs())
 
     def perform_inference(self, image: np.ndarray):
         """
@@ -59,30 +161,28 @@ class Yolov8DetectionModel(DetectionModel):
 
         """
 
-        from ultralytics.engine.results import Masks
-
         # Confirm model is loaded
         if self.model is None:
             raise ValueError("Model is not loaded, load it by calling .load_model()")
 
-        kwargs = {"cfg": self.config_path, "verbose": False, "conf": self.confidence_threshold, "device": self.device}
-
-        if self.image_size is not None:
-            kwargs = {"imgsz": self.image_size, **kwargs}
-
-        prediction_result = self.model(image[:, :, ::-1], **kwargs)  # YOLOv8 expects numpy arrays to have BGR
+        prediction_result = self.model(
+            image[:, :, ::-1], **self._prediction_kwargs()
+        )  # YOLOv8 expects numpy arrays to have BGR
+        self.last_inference_seconds = sum(
+            result.speed.get("inference", 0.0) for result in prediction_result
+        ) / 1000.0
 
         if self.has_mask:
-            if not prediction_result[0].masks:
-                prediction_result[0].masks = Masks(
-                    torch.tensor([], device=self.model.device), prediction_result[0].boxes.orig_shape
-                )
-
             # We do not filter results again as confidence threshold is already applied above
             prediction_result = [
                 (
                     result.boxes.data,
-                    result.masks.data,
+                    result.masks.data
+                    if result.masks is not None
+                    else torch.empty(
+                        (0, *result.boxes.orig_shape),
+                        device=result.boxes.data.device,
+                    ),
                 )
                 for result in prediction_result
             ]
@@ -96,7 +196,7 @@ class Yolov8DetectionModel(DetectionModel):
 
     @property
     def category_names(self):
-        return self.model.names.values()
+        return self.category_mapping.values()
 
     @property
     def num_categories(self):
@@ -110,7 +210,7 @@ class Yolov8DetectionModel(DetectionModel):
         """
         Returns if model output contains segmentation mask
         """
-        return self.model.overrides["task"] == "segment"
+        return self.model.task == "segment"
 
     def _create_object_prediction_list_from_original_predictions(
         self,

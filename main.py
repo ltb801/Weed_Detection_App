@@ -149,6 +149,8 @@ class WeedDetectionApp(QMainWindow, UI_MainWindow):
         self.overlayToggle.setEnabled(False)
         self.overlayToggle.setChecked(True)
         self.resultsLabel.setText('No detection results')
+        self.inferenceTimeLabel.setText('Inference time: —')
+        self.inferenceTimeLabel.hide()
         self.summaryCountLabel.setText('— patches')
         self.summaryAreaLabel.setText('Weed area: —')
         self.summaryCoverageLabel.setText('Image coverage: —')
@@ -216,7 +218,9 @@ class WeedDetectionApp(QMainWindow, UI_MainWindow):
             self,
             'Open YOLO Model',
             self._last_directory('lastModelDirectory'),
-            'PyTorch models (*.pt)',
+            'YOLO models (*.pt *.onnx *.engine);;'
+            'PyTorch models (*.pt);;ONNX models (*.onnx);;'
+            'TensorRT engines (*.engine)',
         )
         if not model_path:
             return
@@ -244,7 +248,24 @@ class WeedDetectionApp(QMainWindow, UI_MainWindow):
         self.detection_model = model
         self.model_path = self._pending_path
         self._pending_path = None
-        self.modelPathLabel.setText(f'{Path(self.model_path).name}\nDevice: {device}')
+        suffix = Path(self.model_path).suffix.lower()
+        backend_names = {
+            '.pt': 'PyTorch',
+            '.onnx': 'ONNX Runtime',
+            '.engine': 'TensorRT',
+        }
+        details = [
+            Path(self.model_path).name,
+            f'Backend: {backend_names[suffix]}',
+            f'Device: {device}',
+        ]
+        if suffix in {'.onnx', '.engine'} and model.image_size is not None:
+            if isinstance(model.image_size, int):
+                input_height = input_width = model.image_size
+            else:
+                input_height, input_width = model.image_size
+            details.append(f'Model input: {input_width} x {input_height}')
+        self.modelPathLabel.setText('\n'.join(details))
         self._clear_results()
         self._finish_operation(f'Model loaded on {device}')
 
@@ -294,6 +315,11 @@ class WeedDetectionApp(QMainWindow, UI_MainWindow):
         self.overlayToggle.setChecked(True)
         self.overlayToggle.setEnabled(count > 0)
         self.resultsLabel.setText(f'{count:,} detections shown; ready to export')
+        if result.inference_seconds is not None:
+            self.inferenceTimeLabel.setText(
+                f'Inference time: {result.inference_seconds:.2f}s'
+            )
+            self.inferenceTimeLabel.show()
         summary = result.summary
         if summary is not None:
             noun = 'patch' if summary.count == 1 else 'patches'

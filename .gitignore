@@ -12,6 +12,8 @@ env/
 
 # Model checkpoints
 *.pt
+*.onnx
+*.engine
 
 # GeoTIFF imagery
 *.tif
